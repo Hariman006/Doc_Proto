@@ -450,8 +450,7 @@ def admin_dashboard_page():
 
     if st.session_state.show_search:
         st.subheader("Search Documents")
-        search_query = st.text_input("Search (e.g., 'Hari 2025/05/13 14:30:00 15:00:00 transport.pdf keywords')", key="dynamic_search")
-        
+        search_query = st.text_input("Search (e.g., 'UserId, Date Format : 2025/05/13, Time Format : 15:00:00')", key="dynamic_search")
         documents = []
         if search_query:
             params = parse_search_query(search_query)
