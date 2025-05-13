@@ -8,10 +8,8 @@ from datetime import datetime, date, time, timedelta
 from dotenv import load_dotenv
 import docx2txt
 
-# Load environment variables
 load_dotenv()
 
-# Database configuration
 db_config = {
     "host": os.getenv("MYSQL_HOST", "localhost"),
     "user": os.getenv("MYSQL_USER", "root"),
@@ -290,7 +288,6 @@ def admin_upload_page():
                 else:
                     st.info("No tables found in the document.")
 
-                # Use the currently logged-in admin's ID instead of hardcoding "admin"
                 store_document_content(filename, text, tables, st.session_state.admin_id)
 
                 if uploaded_file.name in st.session_state.admin_confirmed_filenames:
@@ -336,6 +333,8 @@ def parse_search_query(query):
         times.sort()
         if len(times) >= 1:
             params["start_time"] = datetime.strptime(times[0], '%H:%M:%S').time()
+            # If only one time is provided, set end_time to the same as start_time for exact match
+            params["end_time"] = params["start_time"]
         if len(times) >= 2:
             params["end_time"] = datetime.strptime(times[-1], '%H:%M:%S').time()
     
@@ -450,7 +449,8 @@ def admin_dashboard_page():
 
     if st.session_state.show_search:
         st.subheader("Search Documents")
-        search_query = st.text_input("Search (e.g., 'UserId, Date Format : 2025/05/13, Time Format : 15:00:00')", key="dynamic_search")
+        # Updated placeholder to clarify time range format
+        search_query = st.text_input("Search (e.g., 'UserId, Date Format: 2025/05/13, Time Range: 15:00:00 15:30:00')", key="dynamic_search")
         documents = []
         if search_query:
             params = parse_search_query(search_query)
