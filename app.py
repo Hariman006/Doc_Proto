@@ -387,7 +387,7 @@ def parse_search_query(query):
 
 def admin_dashboard_page():
     st.title("Admin Dashboard")
-    st.write("View all uploaded documents and search by username, user ID, upload date, upload time, filename, or text content.")
+    st.write("View all uploaded documents and search by user Name, user ID, upload date, upload time, or specific word in file content.")
 
     if not st.session_state.get("admin_id"):
         st.error("Please log in as admin.")
@@ -432,7 +432,7 @@ def admin_dashboard_page():
             table_data.append({
                 "File Name": file_name,
                 "Extension": file_extension,
-                "Uploaded By": user_id,  # Display the user_id directly since it's the admin_id
+                "Uploaded By": user_id,
                 "Uploaded At": upload_time,
                 "Filename": filename
             })
@@ -443,16 +443,23 @@ def admin_dashboard_page():
     else:
         st.info("No documents available.")
 
-    # Search functionality for username, user ID, upload date, upload time, filename, and text content
+    # Integrated Search functionality
     if "show_search" not in st.session_state:
         st.session_state.show_search = False
 
     if st.session_state.show_search:
         st.subheader("Search Documents")
-        # Updated placeholder to clarify time range format
-        search_query = st.text_input("Search (e.g., 'UserId, Date Format: 2025/05/13, Time Range: 15:00:00 15:30:00')", key="dynamic_search")
+        # Updated placeholder to include specific word search
+        search_query = st.text_input(
+            "Search (e.g., 'UserId, Date Format: 2025/05/13, Time Format: 16:00:00')",
+            key="dynamic_search"
+        )
+        specific_word = st.text_input(
+            "Enter a Specific Word To Search In File Content",
+            key="specific_word_search"
+        )
         documents = []
-        if search_query:
+        if search_query or specific_word:
             params = parse_search_query(search_query)
             
             conn = get_db_connection()
@@ -466,6 +473,7 @@ def admin_dashboard_page():
                 """
                 query_params = [st.session_state.admin_id]
                 
+                # Apply filters from parse_search_query
                 if params["username"]:
                     query += " AND (l.name LIKE %s OR d.user_id LIKE %s)"
                     query_params.extend([f"%{params['username']}%", f"%{params['username']}%"])
@@ -485,12 +493,19 @@ def admin_dashboard_page():
                     query += " AND TIME(d.upload_time) <= %s"
                     query_params.append(params["end_time"])
                 if params["filename"]:
-                    query += " AND LOWER(d.filename) = LOWER(%s)"  # Exact match for filename
+                    query += " AND LOWER(d.filename) = LOWER(%s)"
                     query_params.append(params["filename"])
                 if params["text_query"]:
                     query += " AND d.extracted_text LIKE %s"
                     query_params.append(f"%{params['text_query']}%")
                 
+                # Add specific word search to the query
+                if specific_word:
+                    specific_word = specific_word.strip()
+                    if specific_word:
+                        query += " AND LOWER(d.extracted_text) LIKE LOWER(%s)"
+                        query_params.append(f"%{specific_word}%")
+
                 cursor.execute(query, query_params)
                 documents = cursor.fetchall()
                 cursor.close()
@@ -553,7 +568,17 @@ def admin_dashboard_page():
                     st.write(f"**Upload Time:** {upload_time}")
                     if text:
                         st.write("**Extracted Text:**")
-                        st.text_area("Text", text, height=200, key=f"admin_text_{filename}_{upload_time}")
+                        if specific_word:
+                            # Highlight the specific word in the extracted text
+                            highlighted_text = re.sub(
+                                f"({re.escape(specific_word)})",
+                                r"**\1**",
+                                text,
+                                flags=re.IGNORECASE
+                            )
+                            st.text_area("Text", highlighted_text, height=200, key=f"admin_text_{filename}_{upload_time}")
+                        else:
+                            st.text_area("Text", text, height=200, key=f"admin_text_{filename}_{upload_time}")
                     if tables:
                         st.write("**Extracted Tables:**")
                         st.text_area("Tables", tables, height=200, key=f"admin_tables_{filename}_{upload_time}")
@@ -573,7 +598,7 @@ def admin_dashboard_page():
         else:
             st.info("No documents found matching the search criteria.")
 
-        # Moved "Download a File" section inside the Search section
+        # Download a File section
         st.subheader("Download a File")
         df = pd.DataFrame([{
             "Filename": doc[0]
@@ -595,68 +620,6 @@ def admin_dashboard_page():
                     st.warning("The selected file is not available for download.")
         else:
             st.info("No documents available to download.")
-
-        # Moved "Search File Content by Specific Word" section inside the Search section
-        st.subheader("Search File Content by Specific Word")
-        specific_word = st.text_input("Enter a specific word to search in file content", key="specific_word_search")
-        
-        if specific_word:
-            # Normalize the search term
-            specific_word = specific_word.strip()
-            conn = get_db_connection()
-            if conn:
-                cursor = conn.cursor()
-                # Use LOWER() to make the search case-insensitive
-                query = """
-                    SELECT fc.filename, fc.user_id, fc.upload_time, fc.extracted_text, l.name
-                    FROM file_content fc
-                    LEFT JOIN log_details l ON fc.user_id = l.username
-                    WHERE LOWER(fc.extracted_text) LIKE LOWER(%s)
-                    AND fc.user_id = %s
-                """
-                search_pattern = f"%{specific_word}%"
-                cursor.execute(query, (search_pattern, st.session_state.admin_id))
-                matching_docs = cursor.fetchall()
-                
-                if matching_docs:
-                    st.write(f"**Total Documents Found:** {len(matching_docs)}")
-                    for doc in matching_docs:
-                        filename, user_id, upload_time, text, username = doc
-                        st.subheader(f"File: {filename}")
-                        st.write(f"**Filename:** {filename}")
-                        st.write(f"**User ID:** {user_id}")
-                        st.write(f"**Username:** {username if username else 'N/A'}")
-                        st.write(f"**Upload Time:** {upload_time}")
-                        if text:
-                            st.write("**Extracted Text (with search term highlighted):**")
-                            # Highlight the search term in the extracted text
-                            highlighted_text = re.sub(
-                                f"({re.escape(specific_word)})",
-                                r"**\1**",
-                                text,
-                                flags=re.IGNORECASE
-                            )
-                            st.text_area("Text", highlighted_text, height=200, key=f"content_search_text_{filename}_{upload_time}")
-                        
-                        file_path = os.path.join(UPLOAD_DIR, filename)
-                        if os.path.exists(file_path):
-                            with open(file_path, "rb") as file:
-                                st.download_button(
-                                    label="Download File",
-                                    data=file,
-                                    file_name=filename,
-                                    mime="application/pdf" if filename.endswith('.pdf') else "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                    key=f"content_search_download_{filename}_{upload_time}"
-                                )
-                        else:
-                            st.warning("The original file is not available for download.")
-                else:
-                    st.info("No documents found containing the specified word.")
-                
-                cursor.close()
-                conn.close()
-            else:
-                st.error("Failed to connect to the database while searching for specific word.")
 
         # Add "Back to Home" button to return to the Admin Dashboard homepage
         if st.button("Back to Home"):
